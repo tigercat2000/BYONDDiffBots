@@ -45,3 +45,5 @@ time = "0.3.23"
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.5.0"
 
+[dev-dependencies]
+tempfile = "3"

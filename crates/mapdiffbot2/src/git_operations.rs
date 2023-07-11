@@ -1,7 +1,7 @@
 use eyre::{Context, Result};
 use std::path::Path;
 
-use git2::{build::CheckoutBuilder, FetchOptions, Repository};
+use git2::{build::CheckoutBuilder, FetchOptions, Repository, WorktreeAddOptions};
 
 pub fn fetch_and_get_branches<'a>(
     base_sha: &str,
@@ -176,7 +176,109 @@ pub fn with_checkout<T>(
     f()
 }
 
+pub fn with_checkout_worktree<T>(
+    checkout_ref: &git2::Reference,
+    worktree_name: &str,
+    repo: &Repository,
+    f: impl FnOnce(&Path) -> Result<T>,
+) -> Result<T> {
+    let worktree = if let Ok(worktree) = repo.find_worktree(worktree_name) {
+        // Update the worktree
+        let worktree_repo =
+            Repository::open_from_worktree(&worktree).context("Opening worktree repo")?;
+        worktree_repo.set_head(checkout_ref.name().unwrap())?;
+        worktree_repo.checkout_head(Some(
+            CheckoutBuilder::new()
+                .force()
+                .remove_ignored(true)
+                .remove_untracked(true),
+        ))?;
+        worktree
+    } else {
+        // Worktree doesn't exist yet
+        repo.worktree(
+            worktree_name,
+            &repo
+                .workdir()
+                // It's safe to assume we always have a working dir because we never clone bare repositories
+                .unwrap()
+                .join(worktree_name),
+            Some(WorktreeAddOptions::new().reference(Some(checkout_ref))),
+        )
+        .context("Creating new worktree")?
+    };
+
+    f(worktree.path())
+}
+
 pub fn clone_repo(url: &str, dir: &Path) -> Result<()> {
     git2::Repository::clone(url, dir.as_os_str()).context("Cloning repo")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use path_absolutize::Absolutize;
+
+    const BASE_SHA: &str = "9caa787ea37aa86e6203b84dbd2f8f9c1d29fbd7";
+    const BASE_BRANCH: &str = "master";
+    const HEAD_SHA: &str = "e1a57148d8113372d4bc865493394d74491be914";
+    const HEAD_BRANCH: &str = "worktree_ref";
+
+    #[test]
+    // This is very expensive so we only want to run it when requested.
+    #[ignore]
+    fn test_worktree() {
+        let tempdir = tempfile::tempdir().unwrap();
+
+        // Drop everything before we try and close the tempdir
+        {
+            let path = tempdir.path();
+
+            clone_repo(
+                "https://github.com/spacestation13/BYONDDiffBotsTestRepo.git",
+                path,
+            )
+            .expect("Failed to clone repository to temporary directory.");
+
+            println!("Cloned repo to {:#?}", path.absolutize());
+
+            let repo = Repository::open(path).expect("Failed to open repository");
+
+            let (_base, worktree) =
+                fetch_and_get_branches(BASE_SHA, HEAD_SHA, &repo, HEAD_BRANCH, BASE_BRANCH)
+                    .expect("Failed to get refs");
+
+            with_checkout_worktree(&worktree, "_mdb2_worktree_head", &repo, |path| {
+                println!("Operating on worktree in {:#?}", path);
+                assert!(path.exists());
+                assert!(path.join("WORKTREE.md").exists());
+
+                println!("Success: Confirmed worktree was correct");
+                Ok(())
+            })
+            .expect("Failed to use with_checkout_worktree");
+
+            assert!(!repo.workdir().unwrap().join("WORKTREE.md").exists());
+            assert!(repo.workdir().unwrap().join("_mdb2_worktree_head").exists());
+            println!("Success: Confirmed base tree was unaffected other than worktree folder");
+
+            println!("Testing to make sure worktree works twice");
+
+            with_checkout_worktree(&worktree, "_mdb2_worktree_head", &repo, |path| {
+                println!("Operating on worktree in {:#?}", path);
+                assert!(path.exists());
+                assert!(path.join("WORKTREE.md").exists());
+
+                println!("Success: Confirmed worktree was correct");
+                Ok(())
+            })
+            .expect("Failed to use with_checkout_worktree");
+        }
+
+        tempdir
+            .close()
+            .expect("Failed to clean up temporary directory");
+    }
 }
