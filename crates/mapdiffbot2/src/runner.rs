@@ -116,8 +116,11 @@ async fn garbage_collect_all_repos() {
 }
 
 async fn job_handler(name: &str, job: Job, blob_client: Azure) {
-    let (repo, pull_request, check_run) =
-        (job.repo.clone(), job.pull_request, job.check_run.clone());
+    let (repo, pull_request, check_run) = (
+        job.repo.clone(),
+        job.pull_request,
+        job.check_run.clone().unwrap(),
+    );
     log::info!(
         "[{}#{}] [{}] Starting",
         repo.full_name(),

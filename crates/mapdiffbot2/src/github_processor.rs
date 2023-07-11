@@ -103,7 +103,7 @@ async fn process_pull(
         head: pull.head,
         pull_request: pull.number,
         files,
-        check_run,
+        check_run: Some(check_run),
         installation: InstallationId(installation.id),
     };
 

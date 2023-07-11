@@ -371,12 +371,19 @@ pub fn do_job(job: Job, blob_client: Azure) -> Result<CheckOutputs> {
                     summary: "The repository is being cloned, this will take a few minutes. Future runs will not require cloning.".to_owned(),
                     text: "".to_owned(),
                 };
-                let _ = job.check_run.set_output(output).await; // we don't really care if updating the job fails, just continue
+                if let Some(check_run) = &job.check_run {
+                    let _ = check_run.set_output(output).await; // we don't really care if updating the job fails, just continue
+                }
             });
         clone_repo(&repo, &repo_dir).context("Cloning repo")?;
     }
 
-    let non_abs_directory = format!("images/{}/{}", job.repo.id, job.check_run.id());
+    let non_abs_directory = if let Some(check_run) = &job.check_run {
+        format!("images/{}/{}", job.repo.id, check_run.id())
+    } else {
+        format!("images/{}/TEST", job.repo.id)
+    };
+
     let output_directory = Path::new(&non_abs_directory)
         .absolutize()
         .context("Absolutizing images path")?;
@@ -433,4 +440,58 @@ pub fn do_job(job: Job, blob_client: Azure) -> Result<CheckOutputs> {
     clean_up_references(&repository, &job.base.r#ref).context("Cleaning up references")?;
 
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diffbot_lib::github::github_types;
+    use octocrab::models::InstallationId;
+    use tempfile::tempdir;
+
+    #[test]
+    #[ignore]
+    fn test_tgstation_75440() {
+        const BASE: &str = "df8ba3d90e337ba55af7783dc759ab0b29158439";
+        const BASE_REF: &str = "master";
+        const HEAD: &str = "092c11b3158579b7731265f61cbd7cca9d2f4587";
+        const HEAD_REF: &str = "meta_gym";
+        const PR: u64 = 75440;
+        const URL: &str = "https://api.github.com/repos/tgstation/tgstation";
+        const ID: u64 = 3234987;
+
+        let tempdir = tempdir().expect("Failed to create tempdir");
+
+        {
+            let job = Job {
+                repo: github_types::Repository {
+                    url: URL.to_owned(),
+                    id: ID,
+                },
+                base: Branch {
+                    sha: BASE.to_owned(),
+                    r#ref: BASE_REF.to_owned(),
+                },
+                head: Branch {
+                    sha: HEAD.to_owned(),
+                    r#ref: HEAD_REF.to_owned(),
+                },
+                pull_request: PR,
+                files: vec![FileDiff {
+                    filename: "_maps/map_files/MetaStation/MetaStation.dmm".to_owned(),
+                    status: ChangeType::Modified,
+                }],
+                check_run: None,
+                installation: InstallationId(0),
+            };
+
+            let result = do_job(job, None).expect("Failed to finish rendering");
+
+            println!("Result: {:#?}", result);
+        }
+
+        tempdir
+            .close()
+            .expect("Failed to clean up temporary directory");
+    }
 }

@@ -25,8 +25,11 @@ pub async fn handle_jobs<S: AsRef<str>>(name: S, mut job_receiver: yaque::Receiv
 }
 
 async fn job_handler(name: &str, job: Job) {
-    let (repo, pull_request, check_run) =
-        (job.repo.clone(), job.pull_request, job.check_run.clone());
+    let (repo, pull_request, check_run) = (
+        job.repo.clone(),
+        job.pull_request,
+        job.check_run.clone().unwrap(),
+    );
     info!(
         "[{}#{}] [{}] Starting",
         repo.full_name(),

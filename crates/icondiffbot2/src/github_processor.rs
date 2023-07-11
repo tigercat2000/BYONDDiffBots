@@ -196,7 +196,7 @@ async fn handle_pull(
         head: pull.head,
         pull_request: pull.number,
         files: changed_dmis,
-        check_run,
+        check_run: Some(check_run),
         installation: InstallationId(installation.id),
     };
 

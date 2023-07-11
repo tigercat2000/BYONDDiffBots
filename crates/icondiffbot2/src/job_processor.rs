@@ -22,7 +22,13 @@ use std::{
 pub fn do_job(job: Job) -> Result<CheckOutputs> {
     let handle = actix_web::rt::Runtime::new()?;
 
-    handle.block_on(async { job.check_run.mark_started().await })?;
+    handle.block_on(async {
+        if let Some(check_run) = &job.check_run {
+            check_run.mark_started().await
+        } else {
+            Ok(())
+        }
+    })?;
 
     let mut map = OutputTableBuilder::new();
 
