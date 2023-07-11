@@ -81,7 +81,7 @@ pub struct PullRequestEventPayload {
     pub installation: Installation,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct Output {
     pub title: &'static str,
     pub summary: String,

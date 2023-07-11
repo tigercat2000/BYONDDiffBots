@@ -447,11 +447,39 @@ mod tests {
     use super::*;
     use diffbot_lib::github::github_types;
     use octocrab::models::InstallationId;
-    use tempfile::tempdir;
+    use std::collections::HashSet;
+
+    fn setup_common_globals() {
+        diffbot_lib::logger::init_logger("debug").expect("Log init failed!");
+
+        CONFIG
+            .set(crate::Config {
+                github: crate::GithubConfig {
+                    app_id: 0,
+                    private_key_path: "".to_owned(),
+                },
+                web: crate::WebConfig {
+                    address: "".to_owned(),
+                    port: 0,
+                    file_hosting_url: "".to_owned(),
+                    limits: None,
+                },
+                blacklist: HashSet::new(),
+                blacklist_contact: "".to_owned(),
+                gc_schedule: "".to_owned(),
+                logging: "debug".to_owned(),
+                secret: None,
+                db_url: None,
+                azure_blobs: None,
+            })
+            .expect("Failed to setup config");
+    }
 
     #[test]
     #[ignore]
     fn test_tgstation_75440() {
+        setup_common_globals();
+
         const BASE: &str = "df8ba3d90e337ba55af7783dc759ab0b29158439";
         const BASE_REF: &str = "master";
         const HEAD: &str = "092c11b3158579b7731265f61cbd7cca9d2f4587";
@@ -460,38 +488,38 @@ mod tests {
         const URL: &str = "https://api.github.com/repos/tgstation/tgstation";
         const ID: u64 = 3234987;
 
-        let tempdir = tempdir().expect("Failed to create tempdir");
+        let expected_output = Output {
+            title: "Map renderings",
+            summary: "*Please file any issues [here](https://github.com/spacestation13/BYONDDiffBots/issues).*\n\n*Github may fail to render some images, appearing as cropped on large map changes. Please use the raw links in this case.*\n\nMaps with diff:".to_owned(),
+            text: "<details>\n    <summary>\n    MODIFIED - _maps/map_files/MetaStation/MetaStation.dmm (Z-level: 1)\n    </summary>\n\nModified region: (50, 60) -> (218, 193)\n\nRaw links: [Old](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-before.png) - [New](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-after.png) - [Diff](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-diff.png)\n\n|  Old  |      New      |  Difference  |\n| :---: |     :---:     |    :---:     |\n| ![If the image doesn't load, use the raw link above](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-before.png) | ![If the image doesn't load, use the raw link above](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-after.png) | ![If the image doesn't load, use the raw link above](/images/3234987/TEST/m/_maps_map_files_MetaStation_MetaStation/0-diff.png)   |\n\n</details>\n".to_owned(),
+        };
 
-        {
-            let job = Job {
-                repo: github_types::Repository {
-                    url: URL.to_owned(),
-                    id: ID,
-                },
-                base: Branch {
-                    sha: BASE.to_owned(),
-                    r#ref: BASE_REF.to_owned(),
-                },
-                head: Branch {
-                    sha: HEAD.to_owned(),
-                    r#ref: HEAD_REF.to_owned(),
-                },
-                pull_request: PR,
-                files: vec![FileDiff {
-                    filename: "_maps/map_files/MetaStation/MetaStation.dmm".to_owned(),
-                    status: ChangeType::Modified,
-                }],
-                check_run: None,
-                installation: InstallationId(0),
-            };
+        let job = Job {
+            repo: github_types::Repository {
+                url: URL.to_owned(),
+                id: ID,
+            },
+            base: Branch {
+                sha: BASE.to_owned(),
+                r#ref: BASE_REF.to_owned(),
+            },
+            head: Branch {
+                sha: HEAD.to_owned(),
+                r#ref: HEAD_REF.to_owned(),
+            },
+            pull_request: PR,
+            files: vec![FileDiff {
+                filename: "_maps/map_files/MetaStation/MetaStation.dmm".to_owned(),
+                status: ChangeType::Modified,
+            }],
+            check_run: None,
+            installation: InstallationId(0),
+        };
 
-            let result = do_job(job, None).expect("Failed to finish rendering");
+        let result = do_job(job, None).expect("Failed to finish rendering");
 
-            println!("Result: {:#?}", result);
-        }
+        println!("Result: {:#?}", result);
 
-        tempdir
-            .close()
-            .expect("Failed to clean up temporary directory");
+        assert_eq!(result, vec![expected_output]);
     }
 }
